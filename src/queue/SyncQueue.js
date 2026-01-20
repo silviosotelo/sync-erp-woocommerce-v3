@@ -15,7 +15,7 @@ class SyncQueue {
 
     return stmt.run(
       product.art_cod_int,
-      product.art_nombre || product.art_nombre_web || 'Sin nombre',
+      product.art_nombre || product.art_desc || 'Sin nombre',
       JSON.stringify(product),
       syncType
     );
@@ -32,7 +32,7 @@ class SyncQueue {
       for (const product of items) {
         insert.run(
           product.art_cod_int,
-          product.art_nombre || product.art_nombre_web || 'Sin nombre',
+          product.art_nombre || product.art_desc || 'Sin nombre',
           JSON.stringify(product),
           syncType
         );

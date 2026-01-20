@@ -98,7 +98,7 @@ class QueueProcessor {
       return existingPost[0].ID;
     }
 
-    const postTitle = product.art_nombre_web || product.art_nombre || product.art_cod_int;
+    const postTitle = product.art_desc || product.art_nombre || product.art_cod_int;
     const postContent = product.art_descripcion_larga || product.art_descripcion || '';
     const postExcerpt = product.art_descripcion || '';
 

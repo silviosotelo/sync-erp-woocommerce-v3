@@ -10,7 +10,7 @@ class QueueValidator {
       errors.push('art_cod_int excede longitud máxima (100 caracteres)');
     }
 
-    if (!product.art_nombre && !product.art_nombre_web) {
+    if (!product.art_nombre && !product.art_desc) {
       errors.push('art_nombre o art_nombre_web es requerido');
     }
 
