@@ -3,6 +3,11 @@ class SystemController {
     this.syncService = syncService;
     this.processor = processor;
     this.logger = logger;
+    
+    // OPTIMIZACIÓN: Guardar referencia a la última prueba de conexión
+    this.lastConnectionTest = null;
+    this.connectionTestCache = null;
+    this.CACHE_DURATION = 30000; // 30 segundos
   }
 
   async getConfig(req, res) {
@@ -16,8 +21,8 @@ class SystemController {
           autoSyncEnabled: process.env.AUTO_SYNC_ENABLED === 'true',
           intervalMinutes: parseInt(process.env.SYNC_INTERVAL_MINUTES) || 10,
           batchSize: parseInt(process.env.SYNC_BATCH_SIZE) || 100,
-          maxRetries: parseInt(process.env.SYNC_MAX_RETRIES) || 3,
-          timeoutSeconds: parseInt(process.env.SYNC_TIMEOUT_SECONDS) || 300
+          maxRetries: parseInt(process.env.MAX_RETRY_ATTEMPTS) || 3,
+          timeoutSeconds: parseInt(process.env.PROCESSING_TIMEOUT_MS) / 1000 || 30
         },
 
         erp: {
@@ -90,18 +95,41 @@ class SystemController {
 
   async testConnections(req, res) {
     try {
+      // OPTIMIZACIÓN: Usar cache de conexiones si es reciente
+      const now = Date.now();
+      if (this.connectionTestCache && 
+          this.lastConnectionTest && 
+          (now - this.lastConnectionTest) < this.CACHE_DURATION) {
+        this.logger.debug('Usando cache de test de conexiones');
+        return res.json(this.connectionTestCache);
+      }
+
       const results = {
         timestamp: new Date().toISOString(),
         tests: {}
       };
 
-      // Test MySQL
+      // Test MySQL - REUTILIZA LA CONEXIÓN EXISTENTE
       if (this.processor) {
         try {
-          await this.processor.testConnection();
-          results.tests.mysql = { status: 'success', message: 'Conexión exitosa' };
+          // IMPORTANTE: No crea nueva conexión, usa el pool existente
+          const pool = this.processor.pool;
+          await new Promise((resolve, reject) => {
+            pool.query('SELECT 1', (err, results) => {
+              if (err) reject(err);
+              else resolve(results);
+            });
+          });
+          
+          results.tests.mysql = { 
+            status: 'success', 
+            message: 'Conexión exitosa (pool reutilizado)',
+            poolConnections: pool._allConnections.length
+          };
+          this.logger.debug('MySQL test OK - Pool reutilizado');
         } catch (error) {
           results.tests.mysql = { status: 'error', message: error.message };
+          this.logger.error('MySQL test failed:', error.message);
         }
       } else {
         results.tests.mysql = { status: 'disabled', message: 'MySQL no configurado' };
@@ -110,21 +138,35 @@ class SystemController {
       // Test ERP
       try {
         const axios = require('axios');
-        const response = await axios.get(process.env.ERP_ENDPOINT, {
-          timeout: 10000
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+
+        const response = await axios.get(process.env.ERP_ENDPOINT + 'producto', {
+          timeout: 10000,
+          signal: controller.signal,
+          httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false })
         });
+
+        clearTimeout(timeout);
+
         results.tests.erp = {
           status: 'success',
           message: 'Endpoint accesible',
           statusCode: response.status
         };
+        this.logger.debug('ERP test OK');
       } catch (error) {
         results.tests.erp = {
           status: 'error',
-          message: error.message,
+          message: error.code === 'ECONNABORTED' ? 'Timeout' : error.message,
           code: error.code
         };
+        this.logger.error('ERP test failed:', error.message);
       }
+
+      // Guardar en cache
+      this.connectionTestCache = results;
+      this.lastConnectionTest = now;
 
       res.json(results);
     } catch (error) {
@@ -135,8 +177,6 @@ class SystemController {
 
   async getLastSync(req, res) {
     try {
-      // Aquí puedes agregar lógica para obtener la última sincronización
-      // desde la base de datos o logs
       const lastSync = {
         timestamp: new Date().toISOString(),
         message: 'Información de última sincronización no disponible aún'

@@ -228,7 +228,7 @@ async function startServer() {
         try {
           Logger.info(`Iniciando sincronización automática (cada ${intervalMinutes} minutos)...`);
 
-          const result = await syncService.syncAll();
+          const result = await syncService.startSync();
 
           Logger.info('Sincronización automática completada', {
             productos: result.totalProducts,

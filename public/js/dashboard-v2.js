@@ -1,11 +1,10 @@
+// public/js/dashboard-v2.js
 let socket;
 let currentPage = 1;
 let currentFilters = { status: 'all', search: '' };
-let charts = {};
 
 document.addEventListener('DOMContentLoaded', () => {
   initializeSocket();
-  initializeCharts();
   initializeEventListeners();
   loadInitialData();
   startAutoRefresh();
@@ -16,10 +15,12 @@ function initializeSocket() {
 
   socket.on('connect', () => {
     updateConnectionStatus(true);
+    addLog('success', 'Conectado al servidor');
   });
 
   socket.on('disconnect', () => {
     updateConnectionStatus(false);
+    addLog('error', 'Desconectado del servidor');
   });
 
   socket.on('stats_update', (stats) => {
@@ -28,108 +29,36 @@ function initializeSocket() {
 
   socket.on('sync_progress', (progress) => {
     updateProgress(progress);
+    addLog('info', `Procesando: ${progress.current} (${progress.processed}/${progress.processed + progress.pending})`);
   });
 
   socket.on('product_completed', (data) => {
-    showNotification('Producto completado: ' + data.art_cod_int, 'success');
+    addLog('success', `✓ Producto completado: ${data.art_cod_int}`);
     refreshQueueTable();
   });
 
   socket.on('product_failed', (data) => {
-    showNotification('Error en producto: ' + data.art_cod_int, 'error');
-    addErrorToList(data);
+    addLog('error', `✗ Error en producto: ${data.art_cod_int}`);
     refreshQueueTable();
   });
 
   socket.on('sync_started', (data) => {
-    showNotification('Sincronización iniciada: Batch ' + data.batch_id, 'info');
+    addLog('info', `🔄 Sincronización iniciada: Batch ${data.batch_id}`);
   });
 
   socket.on('sync_completed', (data) => {
-    showNotification(`Sincronización completada: ${data.successful}/${data.total} exitosos`, 'success');
+    addLog('success', `✅ Sincronización completada: ${data.successful}/${data.total} exitosos`);
     refreshAllData();
-  });
-
-  socket.on('critical_error', (error) => {
-    showNotification('Error crítico: ' + error.message, 'error');
   });
 }
 
 function updateConnectionStatus(connected) {
   const statusEl = document.getElementById('connection-status');
   if (connected) {
-    statusEl.innerHTML = '<span class="w-2 h-2 bg-green-400 rounded-full mr-2"></span>Conectado';
+    statusEl.innerHTML = '<span class="w-2 h-2 bg-green-400 rounded-full mr-2 pulse"></span>Conectado';
   } else {
-    statusEl.innerHTML = '<span class="w-2 h-2 bg-red-400 rounded-full mr-2 pulse"></span>Desconectado';
+    statusEl.innerHTML = '<span class="w-2 h-2 bg-red-400 rounded-full mr-2"></span>Desconectado';
   }
-}
-
-function initializeCharts() {
-  const ctx7days = document.getElementById('chart-7days');
-  /*charts.sevenDays = new Chart(ctx7days, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: 'Exitosos',
-          data: [],
-          borderColor: 'rgb(34, 197, 94)',
-          backgroundColor: 'rgba(34, 197, 94, 0.1)',
-          tension: 0.3
-        },
-        {
-          label: 'Fallidos',
-          data: [],
-          borderColor: 'rgb(239, 68, 68)',
-          backgroundColor: 'rgba(239, 68, 68, 0.1)',
-          tension: 0.3
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          position: 'top'
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true
-        }
-      }
-    }
-  });*/
-
-  const ctxStatus = document.getElementById('chart-status');
-  /*charts.status = new Chart(ctxStatus, {
-    type: 'doughnut',
-    data: {
-      labels: ['Pendientes', 'Procesando', 'Completados', 'Fallidos'],
-      datasets: [{
-        data: [0, 0, 0, 0],
-        backgroundColor: [
-          'rgb(234, 179, 8)',
-          'rgb(59, 130, 246)',
-          'rgb(34, 197, 94)',
-          'rgb(239, 68, 68)'
-        ]
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          position: 'right'
-        }
-      }
-    }
-  });*/
 }
 
 function initializeEventListeners() {
@@ -162,8 +91,8 @@ async function loadInitialData() {
   await Promise.all([
     loadStats(),
     loadQueueData(),
-    load7DaysChart(),
-    loadRecentErrors()
+    loadConfiguration(),
+    testConnections()
   ]);
 }
 
@@ -172,7 +101,6 @@ async function loadStats() {
     const response = await fetch('/api/queue/stats');
     const data = await response.json();
     updateStatsCards(data);
-    updateStatusChart(data);
   } catch (error) {
     console.error('Error loading stats:', error);
   }
@@ -184,30 +112,10 @@ function updateStatsCards(stats) {
   document.getElementById('stat-completed').textContent = stats.completed || 0;
   document.getElementById('stat-failed').textContent = stats.failed || 0;
 
-  const total = (stats.completed || 0) + (stats.failed || 0);
-  const successRate = total > 0 ? ((stats.completed / total) * 100).toFixed(1) : 0;
-  document.getElementById('success-rate').textContent = `Tasa: ${successRate}%`;
-
   if (stats.processing > 0) {
     document.getElementById('processing-icon').classList.add('animate-spin');
   } else {
     document.getElementById('processing-icon').classList.remove('animate-spin');
-  }
-
-  if (stats.eta) {
-    document.getElementById('eta').textContent = `ETA: ${stats.eta}`;
-  }
-}
-
-function updateStatusChart(stats) {
-  if (charts.status) {
-    charts.status.data.datasets[0].data = [
-      stats.pending || 0,
-      stats.processing || 0,
-      stats.completed || 0,
-      stats.failed || 0
-    ];
-    charts.status.update();
   }
 }
 
@@ -289,61 +197,95 @@ function updatePagination(pagination) {
   document.getElementById('showing-total').textContent = pagination.total;
 }
 
-async function load7DaysChart() {
+async function loadConfiguration() {
   try {
-    const response = await fetch('/api/stats/last-7-days');
-    const data = await response.json();
+    const response = await fetch('/api/system/config');
+    const config = await response.json();
 
-    if (charts.sevenDays && data.length > 0) {
-      charts.sevenDays.data.labels = data.map(d => formatDateShort(d.date));
-      charts.sevenDays.data.datasets[0].data = data.map(d => d.successful);
-      charts.sevenDays.data.datasets[1].data = data.map(d => d.failed);
-      charts.sevenDays.update();
-    }
-  } catch (error) {
-    console.error('Error loading 7 days chart:', error);
-  }
-}
+    document.getElementById('system-version').textContent = `v${config.version}`;
 
-async function loadRecentErrors() {
-  try {
-    const response = await fetch('/api/errors/recent');
-    const errors = await response.json();
+    const configPanel = document.getElementById('config-panel');
+    configPanel.innerHTML = `
+      <div class="grid grid-cols-2 gap-2">
+        <div class="col-span-2 bg-${config.sync.autoSyncEnabled ? 'green' : 'red'}-50 p-2 rounded">
+          <p class="font-semibold text-${config.sync.autoSyncEnabled ? 'green' : 'red'}-800">Sincronización Automática</p>
+          <p class="text-${config.sync.autoSyncEnabled ? 'green' : 'red'}-600">${config.sync.autoSyncEnabled ? 'HABILITADA' : 'DESHABILITADA'}</p>
+          ${config.sync.autoSyncEnabled ? `<p class="text-xs text-green-600 mt-1">Cada ${config.sync.intervalMinutes} minutos</p>` : ''}
+        </div>
 
-    document.getElementById('error-count').textContent = errors.length;
-
-    const container = document.getElementById('recent-errors');
-
-    if (errors.length === 0) {
-      container.innerHTML = '<p class="text-gray-500 text-sm">No hay errores recientes</p>';
-      return;
-    }
-
-    container.innerHTML = errors.map(error => `
-      <div class="border border-red-200 rounded-lg p-4 bg-red-50">
-        <div class="flex justify-between items-start">
-          <div class="flex-1">
-            <div class="flex items-center space-x-2 mb-2">
-              <span class="font-semibold text-red-900">${escapeHtml(error.error_type)}</span>
-              <span class="text-xs text-gray-500">${formatDate(error.created_at)}</span>
-            </div>
-            <p class="text-sm text-gray-700 mb-2">${escapeHtml(error.error_message)}</p>
-            ${error.art_cod_int ? `<p class="text-xs text-gray-600">SKU: ${escapeHtml(error.art_cod_int)}</p>` : ''}
-          </div>
-          <button onclick="markErrorResolved(${error.id})"
-                  class="text-green-600 hover:text-green-900 text-sm font-medium ml-4">
-            Resolver
-          </button>
+        <div>
+          <p class="text-gray-500">Intervalo</p>
+          <p class="font-semibold">${config.sync.intervalMinutes} min</p>
+        </div>
+        <div>
+          <p class="text-gray-500">Lote</p>
+          <p class="font-semibold">${config.sync.batchSize} items</p>
+        </div>
+        <div>
+          <p class="text-gray-500">Reintentos</p>
+          <p class="font-semibold">${config.sync.maxRetries}</p>
+        </div>
+        <div>
+          <p class="text-gray-500">Timeout</p>
+          <p class="font-semibold">${config.sync.timeoutSeconds}s</p>
         </div>
       </div>
-    `).join('');
+    `;
+
+    if (config.sync.autoSyncEnabled) {
+      document.getElementById('autosync-status').textContent = 'Activa';
+      document.getElementById('autosync-status').className = 'text-lg font-bold text-green-600';
+
+      const nextSync = new Date(Date.now() + config.sync.intervalMinutes * 60000);
+      document.getElementById('autosync-next').textContent = `Próxima: ${nextSync.toLocaleTimeString('es-PY')}`;
+    } else {
+      document.getElementById('autosync-status').textContent = 'Deshabilitada';
+      document.getElementById('autosync-status').className = 'text-lg font-bold text-red-600';
+      document.getElementById('autosync-next').textContent = 'Configure AUTO_SYNC_ENABLED=true';
+    }
+
+    addLog('success', 'Configuración del sistema cargada');
   } catch (error) {
-    console.error('Error loading recent errors:', error);
+    addLog('error', `Error cargando configuración: ${error.message}`);
   }
 }
 
-function addErrorToList(errorData) {
-  loadRecentErrors();
+async function testConnections() {
+  try {
+    const response = await fetch('/api/system/test-connections');
+    const results = await response.json();
+
+    if (results.tests.mysql.status === 'success') {
+      document.getElementById('mysql-status').textContent = 'Conectado';
+      document.getElementById('mysql-status').className = 'text-lg font-bold text-green-600';
+      document.getElementById('mysql-host').textContent = 'Conectado y operativo';
+      addLog('success', 'MySQL WooCommerce: Conexión establecida');
+    } else if (results.tests.mysql.status === 'disabled') {
+      document.getElementById('mysql-status').textContent = 'No configurado';
+      document.getElementById('mysql-status').className = 'text-lg font-bold text-yellow-600';
+      document.getElementById('mysql-host').textContent = 'Modo solo lectura';
+      addLog('warning', 'MySQL WooCommerce: No configurado');
+    } else {
+      document.getElementById('mysql-status').textContent = 'Error';
+      document.getElementById('mysql-status').className = 'text-lg font-bold text-red-600';
+      document.getElementById('mysql-host').textContent = results.tests.mysql.message;
+      addLog('error', `MySQL WooCommerce: ${results.tests.mysql.message}`);
+    }
+
+    if (results.tests.erp.status === 'success') {
+      document.getElementById('erp-status').textContent = 'Accesible';
+      document.getElementById('erp-status').className = 'text-lg font-bold text-green-600';
+      document.getElementById('erp-endpoint').textContent = 'Endpoint accesible';
+      addLog('success', 'API ERP: Endpoint accesible');
+    } else {
+      document.getElementById('erp-status').textContent = 'Error';
+      document.getElementById('erp-status').className = 'text-lg font-bold text-red-600';
+      document.getElementById('erp-endpoint').textContent = results.tests.erp.message;
+      addLog('error', `API ERP: ${results.tests.erp.message}`);
+    }
+  } catch (error) {
+    addLog('error', `Error probando conexiones: ${error.message}`);
+  }
 }
 
 async function triggerSync() {
@@ -352,20 +294,18 @@ async function triggerSync() {
   try {
     const response = await fetch('/api/sync/start', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
 
     const result = await response.json();
 
     if (result.success) {
-      showNotification('Sincronización iniciada correctamente', 'success');
+      addLog('success', `Sincronización iniciada: Batch ${result.batch_id}`);
     } else {
-      showNotification('Error al iniciar sincronización: ' + result.error, 'error');
+      addLog('error', `Error al iniciar sincronización: ${result.error}`);
     }
   } catch (error) {
-    showNotification('Error al iniciar sincronización', 'error');
+    addLog('error', 'Error al iniciar sincronización');
     console.error(error);
   }
 }
@@ -374,46 +314,24 @@ async function retryAllFailed() {
   if (!confirm('¿Reintentar todos los productos fallidos?')) return;
 
   try {
-    const response = await fetch('/api/queue/retry-failed', {
-      method: 'POST'
-    });
-
+    const response = await fetch('/api/queue/retry-failed', { method: 'POST' });
     const result = await response.json();
-    showNotification(`${result.count} productos marcados para reintento`, 'success');
+    addLog('success', `${result.count} productos marcados para reintento`);
     refreshQueueTable();
   } catch (error) {
-    showNotification('Error al reintentar productos', 'error');
+    addLog('error', 'Error al reintentar productos');
     console.error(error);
   }
 }
 
 async function retrySingle(artCodInt) {
   try {
-    const response = await fetch(`/api/queue/${artCodInt}/retry`, {
-      method: 'POST'
-    });
-
+    const response = await fetch(`/api/queue/${artCodInt}/retry`, { method: 'POST' });
     const result = await response.json();
-    showNotification(`Producto ${artCodInt} marcado para reintento`, 'success');
+    addLog('success', `Producto ${artCodInt} marcado para reintento`);
     refreshQueueTable();
   } catch (error) {
-    showNotification('Error al reintentar producto', 'error');
-    console.error(error);
-  }
-}
-
-async function markErrorResolved(errorId) {
-  try {
-    const response = await fetch(`/api/errors/${errorId}/resolve`, {
-      method: 'POST'
-    });
-
-    if (response.ok) {
-      showNotification('Error marcado como resuelto', 'success');
-      loadRecentErrors();
-    }
-  } catch (error) {
-    showNotification('Error al marcar como resuelto', 'error');
+    addLog('error', 'Error al reintentar producto');
     console.error(error);
   }
 }
@@ -446,24 +364,56 @@ function startAutoRefresh() {
       refreshQueueTable();
     }
   }, 5000);
-
-  setInterval(() => {
-    load7DaysChart();
-  }, 60000);
 }
 
 function updateProgress(progress) {
   if (progress.current) {
-    document.getElementById('current-product').textContent = progress.current;
-  }
-
-  if (progress.eta) {
-    document.getElementById('eta').textContent = `ETA: ${progress.eta}`;
+    addLog('info', `Procesando: ${progress.current}`);
   }
 }
 
-function showNotification(message, type = 'info') {
-  console.log(`[${type.toUpperCase()}] ${message}`);
+let logs = [];
+const MAX_LOGS = 100;
+
+function addLog(type, message) {
+  const timestamp = new Date().toLocaleTimeString('es-PY', { hour12: false });
+  const colors = {
+    info: 'text-blue-600',
+    success: 'text-green-600',
+    error: 'text-red-600',
+    warning: 'text-yellow-600'
+  };
+
+  logs.unshift({
+    timestamp,
+    type,
+    message,
+    color: colors[type] || 'text-gray-600'
+  });
+
+  if (logs.length > MAX_LOGS) logs = logs.slice(0, MAX_LOGS);
+
+  renderLogs();
+}
+
+function renderLogs() {
+  const container = document.getElementById('live-logs');
+  if (logs.length === 0) {
+    container.innerHTML = '<div class="text-gray-400 text-center py-4">Esperando eventos...</div>';
+    return;
+  }
+
+  container.innerHTML = logs.map(log => `
+    <div class="log-entry ${log.color}">
+      <span class="text-gray-400">[${log.timestamp}]</span>
+      <span>${log.message}</span>
+    </div>
+  `).join('');
+}
+
+function clearLogs() {
+  logs = [];
+  renderLogs();
 }
 
 function getStatusLabel(status) {
@@ -485,15 +435,6 @@ function formatDate(dateStr) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit'
-  });
-}
-
-function formatDateShort(dateStr) {
-  if (!dateStr) return '-';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('es-PY', {
-    month: 'short',
-    day: 'numeric'
   });
 }
 

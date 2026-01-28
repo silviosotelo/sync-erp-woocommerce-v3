@@ -1,3 +1,4 @@
+<!-- public/dashboard-v2.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -12,10 +13,10 @@
     .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
     .status-badge { @apply px-2 py-1 text-xs font-semibold rounded-full; }
-    .status-success { @apply bg-green-100 text-green-800; }
-    .status-error { @apply bg-red-100 text-red-800; }
-    .status-warning { @apply bg-yellow-100 text-yellow-800; }
-    .status-info { @apply bg-blue-100 text-blue-800; }
+    .status-pending { @apply bg-yellow-100 text-yellow-800; }
+    .status-processing { @apply bg-blue-100 text-blue-800; }
+    .status-completed { @apply bg-green-100 text-green-800; }
+    .status-failed { @apply bg-red-100 text-red-800; }
     .log-entry { @apply text-xs py-1 px-2 border-b border-gray-100; }
     .log-entry:hover { @apply bg-gray-50; }
   </style>
@@ -36,13 +37,14 @@
             <p class="text-xs text-blue-200" id="system-version">v2.0.0</p>
           </div>
         </div>
-        <div class="flex items-center space-x-4 text-sm">
-          <div class="flex items-center space-x-2">
-            <span id="connection-status" class="flex items-center">
-              <span class="w-2 h-2 bg-green-400 rounded-full mr-2 pulse"></span>
-              Conectado
-            </span>
-          </div>
+        <div class="flex items-center space-x-4">
+          <span id="connection-status" class="flex items-center text-sm">
+            <span class="w-2 h-2 bg-green-400 rounded-full mr-2 pulse"></span>
+            Conectado
+          </span>
+          <button onclick="triggerSync()" class="bg-white text-blue-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-50 transition">
+            🔄 Iniciar Sync
+          </button>
         </div>
       </div>
     </div>
@@ -52,8 +54,6 @@
 
     <!-- System Status Cards -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-
-      <!-- MySQL Status -->
       <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
           <div>
@@ -69,7 +69,6 @@
         </div>
       </div>
 
-      <!-- ERP Status -->
       <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
           <div>
@@ -85,7 +84,6 @@
         </div>
       </div>
 
-      <!-- Auto Sync Status -->
       <div class="bg-white rounded-lg shadow-md p-6">
         <div class="flex items-center justify-between">
           <div>
@@ -100,7 +98,6 @@
           </div>
         </div>
       </div>
-
     </div>
 
     <!-- Stats Cards -->
@@ -129,7 +126,7 @@
               <p id="stat-processing" class="text-3xl font-bold text-blue-600">0</p>
             </div>
             <div class="bg-blue-100 p-4 rounded-full">
-              <svg class="w-8 h-8 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+              <svg id="processing-icon" class="w-8 h-8 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
               </svg>
             </div>
@@ -166,6 +163,65 @@
               </svg>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLA DE SINCRONIZACIÓN - TABLA PRINCIPAL -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-bold text-gray-800 flex items-center">
+          <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
+            <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"></path>
+          </svg>
+          Cola de Sincronización
+        </h2>
+        <div class="flex items-center space-x-3">
+          <select id="filter-status" class="text-sm border border-gray-300 rounded-lg px-3 py-2">
+            <option value="all">Todos</option>
+            <option value="pending">Pendientes</option>
+            <option value="processing">Procesando</option>
+            <option value="completed">Completados</option>
+            <option value="failed">Fallidos</option>
+          </select>
+          <input type="text" id="search-sku" placeholder="Buscar SKU..." class="text-sm border border-gray-300 rounded-lg px-3 py-2">
+          <button onclick="retryAllFailed()" class="text-sm bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition">
+            ↻ Reintentar Fallidos
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabla de productos en cola -->
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Intentos</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actualizado</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="queue-tbody" class="bg-white divide-y divide-gray-200">
+            <tr>
+              <td colspan="7" class="px-6 py-8 text-center text-gray-500">Cargando cola...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Paginación -->
+      <div class="flex items-center justify-between mt-4 text-sm text-gray-700">
+        <div>
+          Mostrando <span id="showing-start">0</span> a <span id="showing-end">0</span> de <span id="showing-total">0</span> productos
+        </div>
+        <div class="flex space-x-2">
+          <button onclick="prevPage()" class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">Anterior</button>
+          <button onclick="nextPage()" class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">Siguiente</button>
         </div>
       </div>
     </div>
@@ -207,219 +263,7 @@
 
   </div>
 
-  <script>
-    const socket = io();
-    let logs = [];
-    const MAX_LOGS = 100;
-
-    // Add log entry
-    function addLog(type, message) {
-      const timestamp = new Date().toLocaleTimeString('es-PY', { hour12: false });
-      const colors = {
-        info: 'text-blue-600',
-        success: 'text-green-600',
-        error: 'text-red-600',
-        warning: 'text-yellow-600'
-      };
-
-      logs.unshift({
-        timestamp,
-        type,
-        message,
-        color: colors[type] || 'text-gray-600'
-      });
-
-      if (logs.length > MAX_LOGS) logs = logs.slice(0, MAX_LOGS);
-
-      renderLogs();
-    }
-
-    function renderLogs() {
-      const container = document.getElementById('live-logs');
-      if (logs.length === 0) {
-        container.innerHTML = '<div class="text-gray-400 text-center py-4">Esperando eventos...</div>';
-        return;
-      }
-
-      container.innerHTML = logs.map(log => `
-        <div class="log-entry ${log.color}">
-          <span class="text-gray-400">[${log.timestamp}]</span>
-          <span>${log.message}</span>
-        </div>
-      `).join('');
-    }
-
-    function clearLogs() {
-      logs = [];
-      renderLogs();
-    }
-
-    // Load configuration
-    async function loadConfiguration() {
-      try {
-        const response = await fetch('/api/system/config');
-        const config = await response.json();
-
-        document.getElementById('system-version').textContent = `v${config.version}`;
-
-        const configPanel = document.getElementById('config-panel');
-        configPanel.innerHTML = `
-          <div class="grid grid-cols-2 gap-2">
-            <div class="col-span-2 bg-${config.sync.autoSyncEnabled ? 'green' : 'red'}-50 p-2 rounded">
-              <p class="font-semibold text-${config.sync.autoSyncEnabled ? 'green' : 'red'}-800">Sincronización Automática</p>
-              <p class="text-${config.sync.autoSyncEnabled ? 'green' : 'red'}-600">${config.sync.autoSyncEnabled ? 'HABILITADA' : 'DESHABILITADA'}</p>
-              ${config.sync.autoSyncEnabled ? `<p class="text-xs text-green-600 mt-1">Cada ${config.sync.intervalMinutes} minutos</p>` : ''}
-            </div>
-
-            <div>
-              <p class="text-gray-500">Intervalo</p>
-              <p class="font-semibold">${config.sync.intervalMinutes} min</p>
-            </div>
-            <div>
-              <p class="text-gray-500">Lote</p>
-              <p class="font-semibold">${config.sync.batchSize} items</p>
-            </div>
-            <div>
-              <p class="text-gray-500">Reintentos</p>
-              <p class="font-semibold">${config.sync.maxRetries}</p>
-            </div>
-            <div>
-              <p class="text-gray-500">Timeout</p>
-              <p class="font-semibold">${config.sync.timeoutSeconds}s</p>
-            </div>
-
-            <div class="col-span-2 mt-2 pt-2 border-t">
-              <p class="text-gray-500 font-semibold mb-1">Características</p>
-              <div class="flex flex-wrap gap-1">
-                ${config.features.multiInventory ? '<span class="status-badge status-success">Multi-Inventario</span>' : ''}
-                ${config.features.stockSync ? '<span class="status-badge status-success">Sync Stock</span>' : ''}
-                ${config.features.dailyReport ? '<span class="status-badge status-info">Reportes</span>' : ''}
-                ${config.features.realtimeUpdates ? '<span class="status-badge status-info">Tiempo Real</span>' : ''}
-              </div>
-            </div>
-          </div>
-        `;
-
-        // Auto sync status
-        if (config.sync.autoSyncEnabled) {
-          document.getElementById('autosync-status').textContent = 'Activa';
-          document.getElementById('autosync-status').className = 'text-lg font-bold text-green-600';
-
-          const nextSync = new Date(Date.now() + config.sync.intervalMinutes * 60000);
-          document.getElementById('autosync-next').textContent = `Próxima: ${nextSync.toLocaleTimeString('es-PY')}`;
-        } else {
-          document.getElementById('autosync-status').textContent = 'Deshabilitada';
-          document.getElementById('autosync-status').className = 'text-lg font-bold text-red-600';
-          document.getElementById('autosync-next').textContent = 'Configure AUTO_SYNC_ENABLED=true';
-        }
-
-        addLog('success', 'Configuración del sistema cargada');
-      } catch (error) {
-        addLog('error', `Error cargando configuración: ${error.message}`);
-      }
-    }
-
-    // Test connections
-    async function testConnections() {
-      try {
-        const response = await fetch('/api/system/test-connections');
-        const results = await response.json();
-
-        // MySQL status
-        if (results.tests.mysql.status === 'success') {
-          document.getElementById('mysql-status').textContent = 'Conectado';
-          document.getElementById('mysql-status').className = 'text-lg font-bold text-green-600';
-          addLog('success', 'MySQL WooCommerce: Conexión establecida');
-        } else if (results.tests.mysql.status === 'disabled') {
-          document.getElementById('mysql-status').textContent = 'No configurado';
-          document.getElementById('mysql-status').className = 'text-lg font-bold text-yellow-600';
-          addLog('warning', 'MySQL WooCommerce: No configurado - Modo solo lectura');
-        } else {
-          document.getElementById('mysql-status').textContent = 'Error';
-          document.getElementById('mysql-status').className = 'text-lg font-bold text-red-600';
-          addLog('error', `MySQL WooCommerce: ${results.tests.mysql.message}`);
-        }
-
-        // ERP status
-        if (results.tests.erp.status === 'success') {
-          document.getElementById('erp-status').textContent = 'Accesible';
-          document.getElementById('erp-status').className = 'text-lg font-bold text-green-600';
-          addLog('success', 'API ERP: Endpoint accesible');
-        } else {
-          document.getElementById('erp-status').textContent = 'Error';
-          document.getElementById('erp-status').className = 'text-lg font-bold text-red-600';
-          addLog('error', `API ERP: ${results.tests.erp.message}`);
-        }
-
-        const statusResponse = await fetch('/api/system/status');
-        const status = await statusResponse.json();
-
-        document.getElementById('mysql-host').textContent = status.connections.mysql.connected ?
-          'Conectado y operativo' : status.connections.mysql.message;
-
-        document.getElementById('erp-endpoint').textContent = status.connections.erp.endpoint || 'No configurado';
-
-      } catch (error) {
-        addLog('error', `Error probando conexiones: ${error.message}`);
-      }
-    }
-
-    // Update stats
-    async function updateStats() {
-      try {
-        const response = await fetch('/api/stats/queue');
-        const stats = await response.json();
-
-        document.getElementById('stat-pending').textContent = stats.pending || 0;
-        document.getElementById('stat-processing').textContent = stats.processing || 0;
-        document.getElementById('stat-completed').textContent = stats.completed || 0;
-        document.getElementById('stat-failed').textContent = stats.failed || 0;
-      } catch (error) {
-        console.error('Error updating stats:', error);
-      }
-    }
-
-    // Socket.IO event listeners
-    socket.on('connect', () => {
-      document.getElementById('connection-status').innerHTML = `
-        <span class="w-2 h-2 bg-green-400 rounded-full mr-2 pulse"></span>
-        Conectado
-      `;
-      addLog('success', 'Conectado al servidor');
-    });
-
-    socket.on('disconnect', () => {
-      document.getElementById('connection-status').innerHTML = `
-        <span class="w-2 h-2 bg-red-400 rounded-full mr-2"></span>
-        Desconectado
-      `;
-      addLog('error', 'Desconectado del servidor');
-    });
-
-    socket.on('sync_completed', (data) => {
-      addLog('success', `Sincronización completada: ${data.successCount} productos actualizados`);
-      updateStats();
-    });
-
-    socket.on('sync_error', (data) => {
-      addLog('error', `Error en sincronización: ${data.error}`);
-    });
-
-    socket.on('stats_update', (stats) => {
-      document.getElementById('stat-pending').textContent = stats.pending || 0;
-      document.getElementById('stat-processing').textContent = stats.processing || 0;
-      document.getElementById('stat-completed').textContent = stats.completed || 0;
-      document.getElementById('stat-failed').textContent = stats.failed || 0;
-    });
-
-    // Initialize
-    loadConfiguration();
-    testConnections();
-    updateStats();
-
-    setInterval(updateStats, 5000);
-    setInterval(testConnections, 60000);
-  </script>
+  <script src="/js/dashboard-v2.js"></script>
 
 </body>
 </html>
